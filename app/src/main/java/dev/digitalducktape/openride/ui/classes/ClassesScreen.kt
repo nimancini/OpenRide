@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.digitalducktape.openride.core.content.ChannelSection
 import dev.digitalducktape.openride.core.content.ContentCategory
 import dev.digitalducktape.openride.core.content.Video
+import dev.digitalducktape.openride.core.guided.GuidedCatalog
 import dev.digitalducktape.openride.ui.designsystem.BikePreview
 import dev.digitalducktape.openride.ui.designsystem.OrSpacing
 import dev.digitalducktape.openride.ui.designsystem.component.OrBanner
@@ -150,8 +151,10 @@ fun ClassesScreen(
                         videos = section.videos,
                         takenVideos = state.takenVideos,
                         onVideoSelected = onVideoSelected,
-                        // The creator's own page: their full recent catalog and playlists.
-                        onTitleClick = { onOpenCreator(section.sourceId) },
+                        // The creator's own page: their full recent catalog and playlists. The
+                        // guided shelf spans creators, so it has none.
+                        onTitleClick = { onOpenCreator(section.sourceId) }
+                            .takeIf { section.sourceId != GuidedCatalog.SHELF_SOURCE_ID },
                         onTitleClickLabel = "Open ${section.channelName}",
                     )
                 }

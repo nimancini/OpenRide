@@ -79,6 +79,8 @@ class UpdateRepository(
 
         /** The public repo's latest-release endpoint. Unauthenticated — the repo must stay public. */
         const val LATEST_RELEASE_URL =
-            "https://api.github.com/repos/digitalducktape/openride/releases/latest"
+            // The guided-classes fork updates from its own releases: its APKs are signed with a
+            // different key, so the upstream ones couldn't install over it anyway.
+            "https://api.github.com/repos/nimancini/OpenRide/releases/latest"
     }
 }

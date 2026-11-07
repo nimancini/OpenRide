@@ -46,7 +46,7 @@ class UpdateRepositoryTest {
     }
 
     // The repository's hardcoded endpoint (kept in sync with UpdateRepository.LATEST_RELEASE_URL).
-    private val latestReleaseUrl = "https://api.github.com/repos/digitalducktape/openride/releases/latest"
+    private val latestReleaseUrl = "https://api.github.com/repos/nimancini/OpenRide/releases/latest"
     private val apkUrl = "https://github.com/digitalducktape/openride/releases/download/v0.7.0/openride-real-7.apk"
     private val releaseBody =
         """{"tag_name":"v0.7.0","body":"New","assets":[{"name":"openride-real-7.apk","browser_download_url":"$apkUrl"}]}"""

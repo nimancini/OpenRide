@@ -99,6 +99,8 @@ object ClassFiltering {
     ): List<Video> {
         val matching = forCategory(sections, filters.category)
             .flatMap { it.videos }
+            // A guided class also sits on its creator's shelf; the grid lists it once.
+            .distinctBy { it.id }
             .filter { matchesLength(it, filters.length) }
             .filter { !filters.hideTaken || it.id !in taken }
         return when (filters.sort) {

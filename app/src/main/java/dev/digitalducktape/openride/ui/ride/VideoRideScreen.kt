@@ -21,6 +21,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -31,7 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
+import dev.digitalducktape.openride.core.guided.Cue
+import dev.digitalducktape.openride.core.guided.GuidedClass
 import dev.digitalducktape.openride.ui.classes.YouTubeEmbed
 import dev.digitalducktape.openride.ui.common.TimeFormat
 import dev.digitalducktape.openride.ui.designsystem.OrColors
@@ -64,11 +68,16 @@ fun VideoRideScreen(
     videoId: String,
     onRideEnded: (rideId: Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** This class's cue sheet, when it's a guided class: drives the targets and segment line. */
+    guidedClass: GuidedClass? = null,
 ) {
     val uiState by viewModel.uiState.collectAsState(initial = InRideUiState())
     val scope = rememberCoroutineScope()
     var overlayVisible by remember { mutableStateOf(true) }
     var showEndConfirmation by remember { mutableStateOf(false) }
+    var videoSec by remember { mutableIntStateOf(0) }
+    val cue = guidedClass?.cueAt(videoSec)
+    val nextCue = guidedClass?.nextCue(videoSec)
 
     // Shared by the End Ride dialog and the video-completion auto-end. endRide() returns
     // null if the ride is already over, so the two paths can't double-fire navigation.
@@ -84,6 +93,7 @@ fun VideoRideScreen(
             videoId = videoId,
             paused = uiState.isPaused,
             onVideoEnded = endRideAndShowSummary,
+            onTime = { videoSec = it },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -102,6 +112,7 @@ fun VideoRideScreen(
 
             TopScrimRow(
                 uiState = uiState,
+                segment = cue?.let { segmentLine(it.label, nextCue, videoSec) },
                 onPauseResume = { if (uiState.isPaused) viewModel.resume() else viewModel.pause() },
                 onEndRide = { showEndConfirmation = true },
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -110,6 +121,7 @@ fun VideoRideScreen(
             RideMetricsBar(
                 uiState = uiState,
                 translucent = true,
+                targets = cue?.let { RideTargets(cadence = it.cadenceRange, resistance = it.resistanceRange) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         } else {
@@ -149,10 +161,12 @@ private fun ClassPlayer(
     videoId: String,
     paused: Boolean,
     onVideoEnded: () -> Unit,
+    onTime: (videoSec: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var webView by remember { mutableStateOf<WebView?>(null) }
     val currentOnVideoEnded by rememberUpdatedState(onVideoEnded)
+    val currentOnTime by rememberUpdatedState(onTime)
 
     AndroidView(
         modifier = modifier,
@@ -171,7 +185,10 @@ private fun ClassPlayer(
                 addJavascriptInterface(
                     // JS-interface methods arrive on a WebView-internal thread; hop to the
                     // UI thread before touching Compose/navigation state.
-                    VideoEndBridge { post { currentOnVideoEnded() } },
+                    PlayerBridge(
+                        ended = { post { currentOnVideoEnded() } },
+                        time = { sec -> post { currentOnTime(sec.toInt()) } },
+                    ),
                     YouTubeEmbed.BRIDGE_NAME,
                 )
                 loadDataWithBaseURL(
@@ -203,14 +220,22 @@ private fun ClassPlayer(
 }
 
 /** Page → app callback surface injected as `window.OpenRideBridge` (see [YouTubeEmbed]). */
-private class VideoEndBridge(private val onEnded: () -> Unit) {
+private class PlayerBridge(private val ended: () -> Unit, private val time: (Double) -> Unit) {
     @JavascriptInterface
-    fun onVideoEnded() = onEnded()
+    fun onVideoEnded() = ended()
+
+    @JavascriptInterface
+    fun onTime(videoSec: Double) = time(videoSec)
 }
+
+/** "CLIMB · Sprint in 0:12": the segment now, and what's next with its countdown. */
+internal fun segmentLine(label: String, next: Cue?, videoSec: Int): String =
+    if (next == null) label else "$label · ${next.label} in ${TimeFormat.elapsed(next.t - videoSec)}"
 
 @Composable
 private fun TopScrimRow(
     uiState: InRideUiState,
+    segment: String?,
     onPauseResume: () -> Unit,
     onEndRide: () -> Unit,
     modifier: Modifier = Modifier,
@@ -221,6 +246,7 @@ private fun TopScrimRow(
         uiState.goalProgress?.let { GoalHairline(it) }
         TopStripContent(
             uiState = uiState,
+            segment = segment,
             onPauseResume = onPauseResume,
             onEndRide = onEndRide,
         )
@@ -230,6 +256,7 @@ private fun TopScrimRow(
 @Composable
 private fun TopStripContent(
     uiState: InRideUiState,
+    segment: String?,
     onPauseResume: () -> Unit,
     onEndRide: () -> Unit,
     modifier: Modifier = Modifier,
@@ -257,7 +284,8 @@ private fun TopStripContent(
             !uiState.sensorsAvailable -> "Sensors not detected"
             uiState.autoPaused -> "Auto-paused. Pedal to resume"
             uiState.isPaused -> "Ride paused"
-            else -> null
+            // A guided class's segment, when nothing needs the rider's attention first.
+            else -> segment
         }
         if (statusText != null) {
             Text(
@@ -265,6 +293,9 @@ private fun TopStripContent(
                 style = OrType.Subtitle,
                 color = if (uiState.sensorsAvailable) OrColors.OnBackground else OrColors.Warning,
                 maxLines = 1,
+                // A guided segment line can run long: it gives way to the ride buttons.
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false).padding(horizontal = OrSpacing.md),
             )
         }
 

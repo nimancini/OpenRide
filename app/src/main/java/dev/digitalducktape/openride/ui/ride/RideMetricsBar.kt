@@ -28,6 +28,9 @@ import dev.digitalducktape.openride.ui.designsystem.OrType
 import dev.digitalducktape.openride.ui.designsystem.component.OrEyebrow
 import dev.digitalducktape.openride.ui.designsystem.zoneColor
 
+/** A guided class's targets for the current segment; either may be absent. */
+data class RideTargets(val cadence: IntRange?, val resistance: IntRange?)
+
 /**
  * The two-tier in-ride metrics panel (v2 redesign spec's signature element, refined against
  * the bike app's in-class layout):
@@ -42,12 +45,14 @@ import dev.digitalducktape.openride.ui.designsystem.zoneColor
  * Over video ([translucent]) the panel sits on a bottom-up black gradient rather than a
  * card, exactly like the class player; on the plain in-ride screen it gets a solid surface.
  * Values follow PRD P0-9: "--" whenever the sensor feed is down, never a fake zero.
+ * A guided class adds [targets]: each range shows in place of its unit.
  */
 @Composable
 fun RideMetricsBar(
     uiState: InRideUiState,
     translucent: Boolean,
     modifier: Modifier = Modifier,
+    targets: RideTargets? = null,
 ) {
     val background = if (translucent) {
         Modifier.background(
@@ -67,7 +72,7 @@ fun RideMetricsBar(
             .then(background)
             .padding(top = if (translucent) OrSpacing.xl else OrSpacing.md, bottom = OrSpacing.md),
     ) {
-        PrimaryRow(uiState)
+        PrimaryRow(uiState, targets)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -89,7 +94,7 @@ private val VideoScrimLabels = Color(0xCC000000)
 private val VideoScrimBottom = Color(0xE6000000)
 
 @Composable
-private fun PrimaryRow(uiState: InRideUiState, modifier: Modifier = Modifier) {
+private fun PrimaryRow(uiState: InRideUiState, targets: RideTargets?, modifier: Modifier = Modifier) {
     val dash = "--"
     val live = uiState.sensorsAvailable
 
@@ -101,6 +106,8 @@ private fun PrimaryRow(uiState: InRideUiState, modifier: Modifier = Modifier) {
             avg = "${uiState.aggregates.avgCadence}",
             avgTrend = trend(live, uiState.metrics.cadenceRpm, uiState.aggregates.avgCadence),
             best = "${uiState.aggregates.maxCadence}",
+            target = targets?.cadence,
+            inTarget = inTarget(live, uiState.metrics.cadenceRpm, targets?.cadence),
             modifier = Modifier.weight(1f),
         )
         PrimaryDivider()
@@ -122,6 +129,8 @@ private fun PrimaryRow(uiState: InRideUiState, modifier: Modifier = Modifier) {
             avg = "${uiState.aggregates.avgResistance}",
             avgTrend = trend(live, uiState.metrics.resistancePercent, uiState.aggregates.avgResistance),
             best = null,
+            target = targets?.resistance,
+            inTarget = inTarget(live, uiState.metrics.resistancePercent, targets?.resistance),
             modifier = Modifier.weight(1f),
         )
     }
@@ -131,6 +140,10 @@ private fun PrimaryRow(uiState: InRideUiState, modifier: Modifier = Modifier) {
  *  down or the two are equal — drives the small arrow beside the AVG flank. */
 private fun trend(live: Boolean, current: Int, avg: Int): Boolean? =
     if (!live || current == avg) null else current > avg
+
+/** Whether the reading is inside a guided class's target, or `null` with no target or sensors. */
+internal fun inTarget(live: Boolean, current: Int, target: IntRange?): Boolean? =
+    if (!live || target == null) null else current in target
 
 @Composable
 private fun PrimaryMetric(
@@ -142,6 +155,8 @@ private fun PrimaryMetric(
     best: String?,
     modifier: Modifier = Modifier,
     currentColor: Color? = null,
+    target: IntRange? = null,
+    inTarget: Boolean? = null,
 ) {
     Row(
         modifier = modifier,
@@ -157,10 +172,19 @@ private fun PrimaryMetric(
             Text(
                 text = current,
                 style = OrType.MetricPrimary,
-                color = currentColor ?: OrColors.OnBackground,
+                color = currentColor ?: if (inTarget == true) OrColors.Success else OrColors.OnBackground,
                 maxLines = 1,
             )
-            OrEyebrow(unit)
+            // A guided class puts its target where the unit goes, the way the Peloton app does:
+            // green while the rider is in it, plain while they're not.
+            if (target != null) {
+                OrEyebrow(
+                    "TARGET ${target.first}–${target.last}",
+                    color = if (inTarget == true) OrColors.Success else OrColors.OnBackground,
+                )
+            } else {
+                OrEyebrow(unit)
+            }
         }
         if (best != null) {
             Flank(label = "BEST", value = best, trend = null)

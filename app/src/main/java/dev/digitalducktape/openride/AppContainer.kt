@@ -41,6 +41,7 @@ import dev.digitalducktape.openride.core.data.OpenRideDatabase
 import dev.digitalducktape.openride.core.data.ProfileHeadCalibrationStore
 import dev.digitalducktape.openride.core.data.ProfileRepository
 import dev.digitalducktape.openride.core.data.RideRepository
+import dev.digitalducktape.openride.core.guided.GuidedRepository
 import dev.digitalducktape.openride.core.heartrate.AndroidBleScanner
 import dev.digitalducktape.openride.core.heartrate.BleHeartRateDataSource
 import dev.digitalducktape.openride.core.heartrate.BleScanner
@@ -423,6 +424,13 @@ class AppContainer(private val applicationContext: Context) {
     /** Curated YouTube-channel content for the Classes browser (PRD P0-6, T9/T10). */
     val contentRepository: YouTubeContentRepository by lazy {
         YouTubeContentRepository(applicationContext, contentSourceRepository)
+    }
+
+    /** Guided classes' cue sheets: bundled in the APK, refreshed from the fork on GitHub. */
+    val guidedRepository: GuidedRepository by lazy {
+        GuidedRepository(bundled = {
+            applicationContext.assets.open(GuidedRepository.ASSET_PATH).bufferedReader().use { it.readText() }
+        })
     }
 
     /** Resolves pasted channel/playlist links for the Content Sources screen. */

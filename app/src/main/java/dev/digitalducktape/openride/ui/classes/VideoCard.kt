@@ -79,6 +79,15 @@ fun VideoCard(
                     modifier = Modifier.align(Alignment.TopStart).padding(OrSpacing.sm),
                 )
             }
+            // Has a cue sheet: the ride shows the instructor's cadence and resistance targets.
+            if (video.guided) {
+                OrOverlayBadge(
+                    text = "GUIDED",
+                    textColor = OrColors.OnAccent,
+                    background = OrColors.Success,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(OrSpacing.sm),
+                )
+            }
             // Duration only when known: the RSS feed never has it and oEmbed not reliably, so
             // most fallback videos simply have no badge rather than a fake "0:00".
             video.durationSec?.let { seconds ->

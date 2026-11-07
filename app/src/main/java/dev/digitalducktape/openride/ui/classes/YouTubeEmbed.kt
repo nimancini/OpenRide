@@ -11,6 +11,8 @@ package dev.digitalducktape.openride.ui.classes
  *   freewheel auto-pause.
  * - When the player reaches ENDED, the page notifies the app through the injected
  *   `OpenRideBridge` JavaScript interface so the workout can finish automatically.
+ * - Every half second it reports the playback position (`OpenRideBridge.onTime`), which a
+ *   guided class's cue sheet is timed against.
  *
  * ToS constraints (PRD Non-Goal #5) still shape the parameters: YouTube's own player chrome
  * stays enabled (`"controls": 1`), playback control goes through the official player API
@@ -59,6 +61,11 @@ object YouTubeEmbed {
                   events: {
                     onReady: function (e) {
                       if (wantPaused) { e.target.pauseVideo(); } else { e.target.playVideo(); }
+                      // Guided classes time their cues to the video, not the ride clock, so a
+                      // scrub or a buffering stall keeps the targets in step.
+                      setInterval(function () {
+                        if (window.$BRIDGE_NAME) { window.$BRIDGE_NAME.onTime(e.target.getCurrentTime()); }
+                      }, 500);
                     },
                     onStateChange: function (e) {
                       if (e.data === YT.PlayerState.ENDED && window.$BRIDGE_NAME) {

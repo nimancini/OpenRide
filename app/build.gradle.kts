@@ -21,8 +21,9 @@ android {
         // API above 29 — see the audit note in docs/DEVICE.md.
         minSdk = 29
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.1.0"
+        // Fork: 100+ keeps clear of upstream's numbering (it updates from the fork's releases).
+        versionCode = 100
+        versionName = "1.1.0-guided"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

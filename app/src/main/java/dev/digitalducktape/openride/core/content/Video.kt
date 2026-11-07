@@ -28,4 +28,6 @@ data class Video(
     val durationSec: Int?,
     val publishedEpochMs: Long,
     val startable: Boolean = true,
+    /** Has a cue sheet in the guided catalog (`core/guided`): the ride shows its targets. */
+    val guided: Boolean = false,
 )

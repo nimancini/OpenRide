@@ -6,6 +6,7 @@ import dev.digitalducktape.openride.core.content.ChannelSection
 import dev.digitalducktape.openride.core.content.Video
 import dev.digitalducktape.openride.core.content.YouTubeContentRepository
 import dev.digitalducktape.openride.core.data.RideRepository
+import dev.digitalducktape.openride.core.guided.GuidedCatalog
 import dev.digitalducktape.openride.core.profile.ActiveProfileHolder
 import dev.digitalducktape.openride.core.ride.RideSessionManager
 import kotlin.random.Random
@@ -42,6 +43,8 @@ class ClassesViewModel(
     private val activeProfileHolder: ActiveProfileHolder,
     rideRepository: RideRepository,
     private val random: Random = Random.Default,
+    /** The current guided catalog (refreshed from GitHub in the app); none by default. */
+    private val guidedCatalog: suspend () -> GuidedCatalog = { GuidedCatalog() },
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ClassesUiState>(ClassesUiState.Loading)
@@ -152,9 +155,14 @@ class ClassesViewModel(
         if (_uiState.value !is ClassesUiState.Loaded) {
             _uiState.value = ClassesUiState.Loading
         }
-        val sections = contentRepository.channelSections()
+        val guided = guidedCatalog()
+        val guidedIds = guided.classes.mapTo(HashSet()) { it.id }
+        // Badge a guided class on its creator's shelf too, so it's findable either way.
+        val sections = contentRepository.channelSections().map { section ->
+            section.copy(videos = section.videos.map { if (it.id in guidedIds) it.copy(guided = true) else it })
+        }
         _uiState.value = ClassesUiState.Loaded(
-            sections = sections,
+            sections = listOfNotNull(guided.shelf()) + sections,
             anyRefreshFailed = sections.any { it.refreshFailed },
         )
     }
