@@ -52,4 +52,14 @@ class YouTubeEmbedTest {
 
         assertTrue(html.contains("videoId: 'a-b_c-D_e12'"))
     }
+
+    @Test
+    fun `the codec patch goes first in the player frame's head, before its scripts`() {
+        val page = """<!DOCTYPE html><html lang="en"><head nonce="x"><script src="base.js"></script></head></html>"""
+
+        val patched = YouTubeEmbed.withCodecPatch(page)
+
+        assertTrue(patched.startsWith("""<!DOCTYPE html><html lang="en"><head nonce="x">${YouTubeEmbed.CODEC_PATCH}<script src="base.js">"""))
+        assertTrue(YouTubeEmbed.CODEC_PATCH.contains("av01"))
+    }
 }

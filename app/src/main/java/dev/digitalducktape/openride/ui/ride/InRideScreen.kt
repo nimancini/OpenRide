@@ -22,7 +22,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import dev.digitalducktape.openride.core.music.MusicApps
 import dev.digitalducktape.openride.core.ride.PowerZone
 import dev.digitalducktape.openride.core.ride.RideGoal
 import dev.digitalducktape.openride.core.route.RoutePosition
@@ -58,6 +60,10 @@ fun InRideScreen(
     val uiState by viewModel.uiState.collectAsState(initial = InRideUiState())
     val scope = rememberCoroutineScope()
     var showEndConfirmation by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val netflixInstalled = remember {
+        context.packageManager.getLaunchIntentForPackage(RideStatsOverlay.NETFLIX) != null
+    }
 
     Column(modifier = modifier.fillMaxSize().background(OrColors.Background)) {
         // Goal progress runs across the very top edge (matching the video ride's strip).
@@ -93,6 +99,22 @@ fun InRideScreen(
                     .padding(top = OrSpacing.lg, end = OrSpacing.ScreenGutter),
                 horizontalArrangement = Arrangement.spacedBy(OrSpacing.md),
             ) {
+                // Netflix full screen with the ride's numbers floating over it (RideStatsOverlay).
+                if (netflixInstalled) {
+                    OrSecondaryButton(
+                        text = "Watch Netflix",
+                        onClick = {
+                            if (!RideStatsOverlay.canShow(context)) {
+                                context.startActivity(RideStatsOverlay.permissionIntent(context))
+                            } else {
+                                RideStatsOverlay.show(context, viewModel.uiState) {
+                                    MusicApps.open(context, context.packageName)
+                                }
+                                MusicApps.open(context, RideStatsOverlay.NETFLIX)
+                            }
+                        },
+                    )
+                }
                 OrSecondaryButton(
                     text = if (uiState.isPaused) "Resume" else "Pause",
                     onClick = { if (uiState.isPaused) viewModel.resume() else viewModel.pause() },

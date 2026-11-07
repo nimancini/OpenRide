@@ -18,7 +18,7 @@
         {"t": 136, "label": "Recover", "cadence": [85, 95], "resistance": [40, 50]},
         {"t": 143, "label": "Flat road", "cadence": [85, 95], "resistance": [45, 55]},
         {"t": 158, "label": "Speed push", "cadence": [95, 110], "resistance": [45, 55]},
-        {"t": 195, "label": "Climb", "cadence": [70, 80], "resistance": [50, 60]},
+        {"t": 195, "label": "Climb", "cadence": [60, 70], "resistance": [50, 60]},
         {"t": 259, "label": "Sprint", "cadence": [100, 120], "resistance": [40, 50]},
         {"t": 289, "label": "Climb", "cadence": [70, 80], "resistance": [50, 60]},
         {"t": 305, "label": "Standing climb", "cadence": [60, 75], "resistance": [55, 65]},

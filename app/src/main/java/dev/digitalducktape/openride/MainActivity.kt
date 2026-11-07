@@ -13,6 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dev.digitalducktape.openride.ui.navigation.OpenRideNavHost
+import dev.digitalducktape.openride.ui.ride.RideStatsOverlay
 import dev.digitalducktape.openride.ui.theme.OpenRideTheme
 import dev.digitalducktape.openride.ui.designsystem.riderAccent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -81,6 +82,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         appContainer.gameVisitManager.endIfLive("app_resumed")
+        // Back from Netflix: the ride is on screen again, so its floating copy goes.
+        RideStatsOverlay.hide()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

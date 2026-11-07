@@ -1,9 +1,11 @@
 package dev.digitalducktape.openride.ui.ride
 
 import android.annotation.SuppressLint
+import android.media.AudioManager
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -15,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -24,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -32,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.digitalducktape.openride.core.guided.Cue
@@ -46,6 +53,7 @@ import dev.digitalducktape.openride.ui.designsystem.component.OrAccentButton
 import dev.digitalducktape.openride.ui.designsystem.component.OrConfirmDialog
 import dev.digitalducktape.openride.ui.designsystem.component.OrEyebrow
 import dev.digitalducktape.openride.ui.designsystem.component.OrSecondaryButton
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 /**
@@ -76,6 +84,8 @@ fun VideoRideScreen(
     var overlayVisible by remember { mutableStateOf(true) }
     var showEndConfirmation by remember { mutableStateOf(false) }
     var videoSec by remember { mutableIntStateOf(0) }
+    var classVolume by rememberSaveable { mutableIntStateOf(100) }
+    var showMixer by remember { mutableStateOf(false) }
     val cue = guidedClass?.cueAt(videoSec)
     val nextCue = guidedClass?.nextCue(videoSec)
 
@@ -94,6 +104,7 @@ fun VideoRideScreen(
             paused = uiState.isPaused,
             onVideoEnded = endRideAndShowSummary,
             onTime = { videoSec = it },
+            classVolume = classVolume,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -113,10 +124,19 @@ fun VideoRideScreen(
             TopScrimRow(
                 uiState = uiState,
                 segment = cue?.let { segmentLine(it.label, nextCue, videoSec) },
+                onVolume = { showMixer = !showMixer },
                 onPauseResume = { if (uiState.isPaused) viewModel.resume() else viewModel.pause() },
                 onEndRide = { showEndConfirmation = true },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
+
+            if (showMixer) {
+                VolumeMixer(
+                    classVolume = classVolume,
+                    onClassVolume = { classVolume = it },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 104.dp, end = OrSpacing.lg),
+                )
+            }
 
             RideMetricsBar(
                 uiState = uiState,
@@ -162,6 +182,7 @@ private fun ClassPlayer(
     paused: Boolean,
     onVideoEnded: () -> Unit,
     onTime: (videoSec: Int) -> Unit,
+    classVolume: Int,
     modifier: Modifier = Modifier,
 ) {
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -180,7 +201,13 @@ private fun ClassPlayer(
                 settings.javaScriptEnabled = true
                 // The class should start without the rider reaching for the screen mid-mount.
                 settings.mediaPlaybackRequiresUserGesture = false
-                webViewClient = WebViewClient()
+                // Read on the UI thread: the interceptor below runs on a WebView worker thread.
+                val userAgent = settings.userAgentString
+                webViewClient = object : WebViewClient() {
+                    // The player frame gets the bike's codec preference (YouTubeEmbed.CODEC_PATCH).
+                    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) =
+                        YouTubeEmbed.interceptEmbed(request.url.toString(), request.method, request.requestHeaders, userAgent)
+                }
                 webChromeClient = WebChromeClient()
                 addJavascriptInterface(
                     // JS-interface methods arrive on a WebView-internal thread; hop to the
@@ -205,6 +232,10 @@ private fun ClassPlayer(
 
     LaunchedEffect(webView, paused) {
         webView?.evaluateJavascript(if (paused) "openridePause()" else "openrideResume()", null)
+    }
+
+    LaunchedEffect(webView, classVolume) {
+        webView?.evaluateJavascript("openrideVolume($classVolume)", null)
     }
 
     DisposableEffect(Unit) {
@@ -236,6 +267,7 @@ internal fun segmentLine(label: String, next: Cue?, videoSec: Int): String =
 private fun TopScrimRow(
     uiState: InRideUiState,
     segment: String?,
+    onVolume: () -> Unit,
     onPauseResume: () -> Unit,
     onEndRide: () -> Unit,
     modifier: Modifier = Modifier,
@@ -247,6 +279,7 @@ private fun TopScrimRow(
         TopStripContent(
             uiState = uiState,
             segment = segment,
+            onVolume = onVolume,
             onPauseResume = onPauseResume,
             onEndRide = onEndRide,
         )
@@ -257,6 +290,7 @@ private fun TopScrimRow(
 private fun TopStripContent(
     uiState: InRideUiState,
     segment: String?,
+    onVolume: () -> Unit,
     onPauseResume: () -> Unit,
     onEndRide: () -> Unit,
     modifier: Modifier = Modifier,
@@ -300,6 +334,11 @@ private fun TopStripContent(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(OrSpacing.md)) {
+            OrSecondaryButton(
+                text = "Volume",
+                onClick = onVolume,
+                modifier = Modifier.background(OrColors.SurfaceRaised, OrShapes.Small),
+            )
             // Raised fill behind the outlined button: it sits on video.
             OrSecondaryButton(
                 text = if (uiState.isPaused) "Resume" else "Pause",
@@ -327,3 +366,37 @@ private fun MetricsPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
         modifier = modifier.background(OrColors.SurfaceRaised, OrShapes.Small),
     )
 }
+
+/**
+ * The volume mixer: the class video's own level, over the device's media volume. Android has no
+ * per-app volume for other apps, and Spotify, Netflix and the class all play through the device
+ * volume, so "music against the instructor" is the class bar against the device bar.
+ */
+@Composable
+private fun VolumeMixer(classVolume: Int, onClassVolume: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val audio = remember { context.getSystemService(AudioManager::class.java) }
+    val max = remember { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    // Read when the panel opens, so the bike's own volume buttons are reflected here.
+    var device by remember { mutableIntStateOf(audio.getStreamVolume(AudioManager.STREAM_MUSIC)) }
+
+    Column(
+        modifier = modifier
+            .width(MixerWidth)
+            .background(OrColors.SurfaceRaised, OrShapes.Small)
+            .padding(OrSpacing.md),
+    ) {
+        OrEyebrow("Class")
+        Slider(value = classVolume / 100f, onValueChange = { onClassVolume((it * 100).roundToInt()) })
+        OrEyebrow("Music and apps (Spotify, Netflix, all sound)")
+        Slider(
+            value = device.toFloat() / max,
+            onValueChange = {
+                device = (it * max).roundToInt()
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, device, 0)
+            },
+        )
+    }
+}
+
+private val MixerWidth = 420.dp

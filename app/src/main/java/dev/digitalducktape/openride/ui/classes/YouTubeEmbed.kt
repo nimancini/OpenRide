@@ -1,5 +1,10 @@
 package dev.digitalducktape.openride.ui.classes
 
+import android.webkit.WebResourceResponse
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+
 /**
  * Builds the host page for the in-app class player (superseding the earlier intent-based
  * handoff): a full-viewport YouTube embed on the privacy-enhanced
@@ -52,6 +57,7 @@ object YouTubeEmbed {
               // The ride can pause before the player finishes bootstrapping; remember the
               // latest requested state and apply it in onReady.
               var wantPaused = false;
+              var wantVolume = 100;
 
               function onYouTubeIframeAPIReady() {
                 player = new YT.Player('player', {
@@ -61,6 +67,7 @@ object YouTubeEmbed {
                   events: {
                     onReady: function (e) {
                       if (wantPaused) { e.target.pauseVideo(); } else { e.target.playVideo(); }
+                      e.target.setVolume(wantVolume);
                       // Guided classes time their cues to the video, not the ride clock, so a
                       // scrub or a buffering stall keeps the targets in step.
                       setInterval(function () {
@@ -86,6 +93,12 @@ object YouTubeEmbed {
                 if (player && player.playVideo) { player.playVideo(); }
               }
 
+              // The class's own level (0-100) in the volume mixer, under the device volume.
+              function openrideVolume(v) {
+                wantVolume = v;
+                if (player && player.setVolume) { player.setVolume(v); }
+              }
+
               var tag = document.createElement('script');
               tag.src = 'https://www.youtube.com/iframe_api';
               document.body.appendChild(tag);
@@ -94,4 +107,61 @@ object YouTubeEmbed {
             </html>
         """.trimIndent()
     }
+
+    /**
+     * The bike's MT8173 decodes H.264 and VP9 in hardware but AV1 only in software, and YouTube
+     * serves AV1 to any player that says it can play it. On the bike that took over half the CPU
+     * (three libgav1 threads), dropped 82% of frames and made YouTube fall back to low quality
+     * (upstream #73). This runs first in the embed page and says no to AV1, so YouTube picks a
+     * codec the chip decodes itself.
+     */
+    internal const val CODEC_PATCH = """<script>(function () {
+  var no = /av01/i;
+  if (window.MediaSource && MediaSource.isTypeSupported) {
+    var its = MediaSource.isTypeSupported.bind(MediaSource);
+    MediaSource.isTypeSupported = function (t) { return no.test(t) ? false : its(t); };
+  }
+  var cpt = HTMLMediaElement.prototype.canPlayType;
+  HTMLMediaElement.prototype.canPlayType = function (t) { return no.test(t) ? '' : cpt.call(this, t); };
+  var mc = navigator.mediaCapabilities;
+  if (mc && mc.decodingInfo) {
+    var di = mc.decodingInfo.bind(mc);
+    mc.decodingInfo = function (c) {
+      var t = (c && c.video && c.video.contentType) || '';
+      return no.test(t) ? Promise.resolve({ supported: false, smooth: false, powerEfficient: false }) : di(c);
+    };
+  }
+})();</script>"""
+
+    /** [CODEC_PATCH] at the very start of the page's head, ahead of the player's own scripts. */
+    fun withCodecPatch(html: String): String {
+        val head = Regex("<head[^>]*>", RegexOption.IGNORE_CASE).find(html) ?: return CODEC_PATCH + html
+        return html.substring(0, head.range.last + 1) + CODEC_PATCH + html.substring(head.range.last + 1)
+    }
+
+    /**
+     * Serves the player frame (`/embed/…`) with [CODEC_PATCH] in it, for the WebView's
+     * `shouldInterceptRequest`. The frame comes from YouTube's origin, so the host page can't
+     * reach into it in time; fetching it here is the one way in that works on the bike's old
+     * WebView (91). Anything else, or a failed fetch, returns null: the WebView loads it as usual.
+     */
+    fun interceptEmbed(url: String, method: String, headers: Map<String, String>, userAgent: String): WebResourceResponse? {
+        if (method != "GET" || !url.startsWith("$BASE_URL/embed/")) return null
+        return try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.setRequestProperty("User-Agent", userAgent)
+            // Not Accept-Encoding: HttpURLConnection only unzips what it asked for itself.
+            headers["Referer"]?.let { connection.setRequestProperty("Referer", it) }
+            headers["Accept-Language"]?.let { connection.setRequestProperty("Accept-Language", it) }
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
+            val html = connection.inputStream.bufferedReader().use { it.readText() }
+            WebResourceResponse("text/html", "utf-8", withCodecPatch(html).byteInputStream())
+        } catch (e: IOException) {
+            null
+        }
+    }
+
+    private const val TIMEOUT_MS = 15_000
 }

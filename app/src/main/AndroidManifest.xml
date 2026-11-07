@@ -63,7 +63,12 @@
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>
+        <!-- Just Ride's Watch Netflix button. -->
+        <package android:name="com.netflix.mediaclient" />
     </queries>
+
+    <!-- The ride's numbers in a movable window over Netflix (RideStatsOverlay). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:name=".OpenRideApplication"

@@ -22,7 +22,7 @@ android {
         minSdk = 29
         targetSdk = 34
         // Fork: 100+ keeps clear of upstream's numbering (it updates from the fork's releases).
-        versionCode = 100
+        versionCode = 101
         versionName = "1.1.0-guided"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -74,6 +74,20 @@ android {
                 abiFilters.clear()
                 abiFilters += "arm64-v8a"
             }
+        }
+
+        // Fork: the bike build, but not debuggable. A debuggable app runs Compose and WebView
+        // glue without ART's compiled code, which on the bike's 2015 MT8173 meant over 60% janky
+        // frames. Signed with the debug key, so it installs over a debugReal build and keeps
+        // the bike's riders and rides. Build/install: ./gradlew :app:installReleaseReal
+        create("releaseReal") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".real"
+            versionNameSuffix = "-real"
+            buildConfigField("boolean", "USE_REAL_BIKE_SENSOR", "true")
+            buildConfigField("String", "UPDATE_APK_ASSET_INFIX", "\"real\"")
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
         }
     }
 
